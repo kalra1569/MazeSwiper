@@ -1,4 +1,3 @@
-// MainActivity.kt
 package com.example.mazeswiper
 
 import android.content.Context
@@ -15,54 +14,63 @@ import androidx.appcompat.app.AppCompatActivity
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.random.Random
+import android.os.CountDownTimer
 
-class MainActivity : AppCompatActivity() {
+
+class MainActivity : AppCompatActivity() { // makes main screen
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val mazeView = MazeView(this)
-        setContentView(mazeView)
+        super.onCreate(savedInstanceState) // called when the app first opens
+        val mazeView = MazeView(this) // creates a new maze view / instead of using xml, we directly show the maze
+        setContentView(mazeView) // instead of using xml, we directly show the maze
     }
 }
 
-class MazeView(context: Context) : View(context) {
+class MazeView(context: Context) : View(context) { // custom game board
 
     // Maze and game state
-    private var maze: Array<IntArray>? = null
+    private var maze: Array<IntArray>? = null // 2d grid that stores walls and paths
     private var rows = 0
     private var cols = 0
 
     // dot logical position (row/col) and pixel center
-    private var dotRow = 1
+    private var dotRow = 1 // which cell its in
     private var dotCol = 1
-    private var dotCx = 0f
+    private var dotCx = 0f // pixel position on screen
     private var dotCy = 0f
 
-    private var goalRow = 0
+    private var goalRow = 0 // where the green dot is
     private var goalCol = 0
-    private val goalPaint = Paint().apply {
-        isAntiAlias = true
-        style = Paint.Style.FILL
-        color = Color.GREEN
-    }
 
     // layout
-    private var cellSize = 0f
-    private var offsetX = 0f
+    private var cellSize = 0f // how big each square is
+    private var offsetX = 0f // how much space to leave on the sides so the maze is centered
     private var offsetY = 0f
 
     // animation state
     private var isAnimating = false
 
+    // Timer
+    private var timer: CountDownTimer? = null
+    private var timeLeft = 45  // seconds
+    private val timerPaint = Paint().apply {
+        isAntiAlias = true
+        color = Color.BLACK
+        textSize = 60f
+        textAlign = Paint.Align.CENTER
+    }
+
+
     // Paints
-    private val wallPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.DKGRAY }
-    private val floorPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.WHITE }
-    private val dotPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.RED }
+    private val wallPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.DKGRAY } // walls are dark gray
+    private val floorPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.WHITE } // floors are white
+    private val dotPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.RED } // the dot is red
+    private val goalPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL; color = Color.GREEN } // the goal is green
 
     // Gesture detection
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-        override fun onDown(e: MotionEvent): Boolean = true
+        override fun onDown(e: MotionEvent): Boolean = true // required so it works
 
-        override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+        override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean { // detects a swipe left right up down
             if (isAnimating) return true
 
             val dx = e2.x - (e1?.x ?: e2.x)
@@ -113,8 +121,8 @@ class MazeView(context: Context) : View(context) {
                 goalCol = c
             }
         }
-    }
 
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         gestureDetector.onTouchEvent(event)
@@ -122,6 +130,7 @@ class MazeView(context: Context) : View(context) {
     }
 
     // Maze generation
+    // runs when the view first gets its size, calculates how big cells are, generates the maze, places the red dot at (1,1), places the green goal with placeGoal()
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
 
@@ -157,9 +166,11 @@ class MazeView(context: Context) : View(context) {
         dotCy = offsetY + dotRow * cellSize + cellSize / 2f
 
         placeGoal()
+        startTimer()
     }
 
-    private fun generateMazeDFS(gridRows: Int, gridCols: Int): Array<IntArray> {
+    private fun generateMazeDFS(gridRows: Int, gridCols: Int): Array<IntArray> { // builds the maze using a depth first search algorithm
+        // starts with all walls, randomly carves passages, keeps track of visited cells, continues until every cell is reachable
         val maze = Array(gridRows) { IntArray(gridCols) { 1 } }
         val cellRows = (gridRows - 1) / 2
         val cellCols = (gridCols - 1) / 2
@@ -203,18 +214,19 @@ class MazeView(context: Context) : View(context) {
     }
 
     // Drawing
+    // called whenever the screen updates
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawColor(Color.LTGRAY)
+        canvas.drawColor(Color.LTGRAY) // paints the background light gray
 
         val grid = maze ?: return
-        for (r in 0 until rows) {
+        for (r in 0 until rows) { // loop through every cell
             for (c in 0 until cols) {
                 val left = offsetX + c * cellSize
                 val top = offsetY + r * cellSize
                 val right = left + cellSize
                 val bottom = top + cellSize
-                canvas.drawRect(left, top, right, bottom, if (grid[r][c] == 1) wallPaint else floorPaint)
+                canvas.drawRect(left, top, right, bottom, if (grid[r][c] == 1) wallPaint else floorPaint) // walls are gray, path is white
             }
         }
 
@@ -227,6 +239,8 @@ class MazeView(context: Context) : View(context) {
         val goalCy = offsetY + goalRow * cellSize + cellSize / 2f
 //        val radius = (cellSize * 0.35f).coerceAtMost(100f)
         canvas.drawCircle(goalCx, goalCy, radius, goalPaint)
+        // draw timer
+        canvas.drawText("Time: $timeLeft", width / 2f, 80f, timerPaint)
     }
 
     // Dot movement & animation
@@ -235,6 +249,8 @@ class MazeView(context: Context) : View(context) {
         val grid = maze ?: return
         var r = dotRow
         var c = dotCol
+        // dr = row change (up or down)
+        // dc = column change (left or right)
 
         // slide until wall or goal
         while (true) {
@@ -251,6 +267,7 @@ class MazeView(context: Context) : View(context) {
 
         if (r == dotRow && c == dotCol) return
 
+        // starts from current row / col, keeps moving in that direction until it hits a wall or the goal, calculates the start and end pixels, animates from start to end using value animator
         val startX = dotCx
         val startY = dotCy
         val endX = offsetX + c * cellSize + cellSize / 2f
@@ -258,6 +275,7 @@ class MazeView(context: Context) : View(context) {
         val distance = hypot(endX - startX, endY - startY)
         val duration = ((1 / (distance + 1)) * 1000 + 200).toLong().coerceAtMost(1500L)
 
+        // animates a number from 0 to 1, each frame it moves the dot closer to the end
         val animator = ValueAnimator.ofFloat(0f, 1f)
         animator.duration = duration
         animator.interpolator = DecelerateInterpolator()
@@ -265,6 +283,7 @@ class MazeView(context: Context) : View(context) {
             val f = anim.animatedValue as Float
             dotCx = startX + (endX - startX) * f
             dotCy = startY + (endY - startY) * f
+            // as f goes from 0 to 1, the dot moves smoothly
 
             // Calculate current row/col based on pixel position
             val curRow = ((dotCy - offsetY) / cellSize).toInt().coerceIn(0, rows - 1)
@@ -291,13 +310,29 @@ class MazeView(context: Context) : View(context) {
         animator.start()
     }
 
-    private fun resetMaze() {
+    private fun resetMaze() { // makes a new maze, puts the red dot back at the start, places a new green goal, calls invalidate to redraw screen
         maze = generateMazeDFS(rows, cols)
         dotRow = 1
         dotCol = 1
         dotCx = offsetX + dotCol * cellSize + cellSize / 2f
         dotCy = offsetY + dotRow * cellSize + cellSize / 2f
         placeGoal()
+        startTimer()
         invalidate()
+    }
+
+    private fun startTimer() {
+        timer?.cancel()
+        timeLeft = 45   // reset to 45 seconds
+        timer = object : CountDownTimer(45_000, 1000) { // 45 seconds
+            override fun onTick(millisUntilFinished: Long) {
+                timeLeft = (millisUntilFinished / 1000).toInt()
+                invalidate()
+            }
+
+            override fun onFinish() {
+                resetMaze()
+            }
+        }.start()
     }
 }
