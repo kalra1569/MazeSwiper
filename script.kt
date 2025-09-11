@@ -17,13 +17,36 @@ import kotlin.random.Random
 import android.os.CountDownTimer
 
 
-class MainActivity : AppCompatActivity() { // makes main screen
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState) // called when the app first opens
-        val mazeView = MazeView(this) // creates a new maze view / instead of using xml, we directly show the maze
-        setContentView(mazeView) // instead of using xml, we directly show the maze
+        super.onCreate(savedInstanceState)
+
+        val mazeView = MazeView(this)
+
+        val frame = android.widget.FrameLayout(this)
+        frame.addView(mazeView)
+
+        val restartButton = android.widget.Button(this).apply {
+            text = "Restart"
+            setOnClickListener {
+                mazeView.resetMaze()
+            }
+        }
+
+        val params = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.END
+            marginEnd = 40
+            topMargin = 40
+        }
+
+        frame.addView(restartButton, params)
+        setContentView(frame)
     }
 }
+
 
 class MazeView(context: Context) : View(context) { // custom game board
 
@@ -31,6 +54,10 @@ class MazeView(context: Context) : View(context) { // custom game board
     private var maze: Array<IntArray>? = null // 2d grid that stores walls and paths
     private var rows = 0
     private var cols = 0
+
+    private var showGoal = false
+
+    private var roundsCompleted = 0
 
     // dot logical position (row/col) and pixel center
     private var dotRow = 1 // which cell its in
@@ -88,40 +115,28 @@ class MazeView(context: Context) : View(context) { // custom game board
     private fun placeGoal() {
         val grid = maze ?: return
 
-        // Define candidate corners (row, col)
-        val corners = listOf(
-            Pair(1, 1),                          // top-left
-            Pair(1, cols - 2),                   // top-right
-            Pair(rows - 2, 1),                   // bottom-left
-            Pair(rows - 2, cols - 2)             // bottom-right
-        )
-
-        // Filter out the corner if it coincides with the red dot
-        val openCorners = corners.filter { (r, c) ->
-            grid[r][c] == 0 && !(r == dotRow && c == dotCol)
-        }
-
-        if (openCorners.isNotEmpty()) {
-            val (r, c) = openCorners.random()
-            goalRow = r
-            goalCol = c
-        } else {
-            // fallback: pick any open cell
-            val openCells = mutableListOf<Pair<Int, Int>>()
-            for (r in 0 until rows) {
-                for (c in 0 until cols) {
-                    if (grid[r][c] == 0 && !(r == dotRow && c == dotCol)) {
-                        openCells.add(Pair(r, c))
-                    }
+        val openCells = mutableListOf<Pair<Int, Int>>()
+        for (r in 0 until rows) {
+            for (c in 0 until cols) {
+                if (grid[r][c] == 0 && !(r == dotRow && c == dotCol)) {
+                    openCells.add(Pair(r, c))
                 }
             }
-            if (openCells.isNotEmpty()) {
-                val (r, c) = openCells.random()
+        }
+
+        openCells.shuffle()
+
+        for ((r, c) in openCells) {
+            if (isReachable(dotRow, dotCol, r, c)) {
                 goalRow = r
                 goalCol = c
+                return
             }
         }
 
+        // fallback: just place at (rows-2, cols-2) if nothing found
+        goalRow = rows - 2
+        goalCol = cols - 2
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -235,10 +250,12 @@ class MazeView(context: Context) : View(context) { // custom game board
         canvas.drawCircle(dotCx, dotCy, radius, dotPaint)
 
         // draw goal dot
-        val goalCx = offsetX + goalCol * cellSize + cellSize / 2f
-        val goalCy = offsetY + goalRow * cellSize + cellSize / 2f
-//        val radius = (cellSize * 0.35f).coerceAtMost(100f)
-        canvas.drawCircle(goalCx, goalCy, radius, goalPaint)
+        if (showGoal) {
+            val goalCx = offsetX + goalCol * cellSize + cellSize / 2f
+            val goalCy = offsetY + goalRow * cellSize + cellSize / 2f
+            canvas.drawCircle(goalCx, goalCy, radius, goalPaint)
+        }
+
         // draw timer
         canvas.drawText("Time: $timeLeft", width / 2f, 80f, timerPaint)
     }
@@ -310,21 +327,55 @@ class MazeView(context: Context) : View(context) { // custom game board
         animator.start()
     }
 
-    private fun resetMaze() { // makes a new maze, puts the red dot back at the start, places a new green goal, calls invalidate to redraw screen
+    private fun isReachable(startRow: Int, startCol: Int, targetRow: Int, targetCol: Int): Boolean {
+        val grid = maze ?: return false
+        val visited = Array(rows) { BooleanArray(cols) }
+        val queue = ArrayDeque<Pair<Int, Int>>()
+        queue.add(Pair(startRow, startCol))
+        visited[startRow][startCol] = true
+
+        val dirs = listOf(Pair(-1, 0), Pair(1, 0), Pair(0, -1), Pair(0, 1))
+
+        while (queue.isNotEmpty()) {
+            val (r, c) = queue.removeFirst()
+            if (r == targetRow && c == targetCol) return true
+
+            for ((dr, dc) in dirs) {
+                val nr = r + dr
+                val nc = c + dc
+                if (nr in 0 until rows && nc in 0 until cols &&
+                    !visited[nr][nc] && grid[nr][nc] == 0) {
+                    visited[nr][nc] = true
+                    queue.add(Pair(nr, nc))
+                }
+            }
+        }
+        return false
+    }
+
+
+    fun resetMaze() { // makes a new maze, puts the red dot back at the start, places a new green goal, calls invalidate to redraw screen
         maze = generateMazeDFS(rows, cols)
         dotRow = 1
         dotCol = 1
         dotCx = offsetX + dotCol * cellSize + cellSize / 2f
         dotCy = offsetY + dotRow * cellSize + cellSize / 2f
-        placeGoal()
+
+        showGoal = false
         startTimer()
         invalidate()
+
+        // Count completed rounds
+        roundsCompleted++
+        if (roundsCompleted % 2 == 0) {
+            showWellnessPopup()
+        }
     }
 
     private fun startTimer() {
         timer?.cancel()
         timeLeft = 45   // reset to 45 seconds
-        timer = object : CountDownTimer(45_000, 1000) { // 45 seconds
+        timer = object : CountDownTimer(45_000, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 timeLeft = (millisUntilFinished / 1000).toInt()
                 invalidate()
@@ -334,5 +385,53 @@ class MazeView(context: Context) : View(context) { // custom game board
                 resetMaze()
             }
         }.start()
+
+        // Delay the goal’s appearance by 10 seconds
+        postDelayed({
+            placeGoal()
+            showGoal = true
+            invalidate()
+        }, 10_000)
+    }
+
+    private fun pauseTimer() {
+        timer?.cancel()
+        timer = null
+    }
+
+    private fun resumeTimer() {
+        timer?.cancel()
+        timer = object : CountDownTimer(timeLeft * 1000L, 1000) {
+            override fun onTick(millisUntilFinished: Long) {
+                timeLeft = (millisUntilFinished / 1000).toInt()
+                invalidate()
+            }
+
+            override fun onFinish() {
+                resetMaze()
+            }
+        }.start()
+    }
+
+    private fun showWellnessPopup() {
+        val messages = listOf(
+            "Stand up and stretch!",
+            "Take a deep breath.",
+            "Try doing one good deed today!"
+        )
+        val randomMessage = messages.random()
+
+        pauseTimer()
+
+        val builder = androidx.appcompat.app.AlertDialog.Builder(context)
+        builder.setMessage(randomMessage)
+            .setCancelable(false) // force user to dismiss
+            .setPositiveButton("✕") { dialog, _ ->
+                dialog.dismiss()
+                resumeTimer()
+            }
+
+        val dialog = builder.create()
+        dialog.show()
     }
 }
